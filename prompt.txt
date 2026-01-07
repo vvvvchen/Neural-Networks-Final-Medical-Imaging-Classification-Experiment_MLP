@@ -1,0 +1,59 @@
+# Role
+你是一位精通 PyTorch 2.x 的資料科學家。請協助我撰寫一份 Python 程式碼，進行 MLP 二元分類實驗。
+
+# Context & Constraints
+1.  **目標**：區分良性 (0) 與惡性 (1) 樣本。
+2.  **痛點解決**：前次實驗因 Validation Loss 震盪導致過早觸發 Early Stopping。本次程式碼需實作 **"Early Stopping Warmup" (延遲啟動)** 機制，確保模型有足夠時間收斂。
+3.  **輸入資料**：特徵已預先提取完成，存於 `features_160.csv` (10,000 筆資料 x 160 個特徵)。
+
+# Task Flow
+
+## 1. Data Loading (Minimalist)
+- **讀取**：使用 `pandas` 讀取 `features_160.csv`。假設最後一欄為 `label`，其餘 160 欄為特徵。
+- **預處理**：
+    - 將特徵轉換為 PyTorch FloatTensor。
+    - **StandardScaler**：雖然是提取好的特徵，仍建議在 Split 後對訓練集 fit，並 transform 到驗證/測試集，以利 MLP 收斂。
+- **切分**：
+    1.  **Hold-out**：80% Development (用於實驗 A) / 20% Final Test (封存，僅用於實驗 B)。
+    2.  **CV Split**：對 80% Development Set 進行 5-Fold Stratified Cross-Validation (實驗 A 用)。
+
+## 2. Experiment A: Architecture Selection (Keep it Simple & Stable)
+**目標**：執行最簡潔可執行的迴圈，比較三種架構，並產出訓練曲線。
+- **Model Architectures (Input=160)**：
+    1.  **Shallow**: 160 -> 64 -> 1
+    2.  **Medium**: 160 -> 128 -> 64 -> 1 (w/ Dropout 0.3)
+    3.  **Deep**: 160 -> 256 -> 128 -> 64 -> 32 -> 1 (w/ BatchNorm & Dropout 0.4)
+    -   *Activation*: ReLU, Output 使用 Sigmoid。
+
+- **Training Setup (防止過早停止)**：
+    -   **Loss**: `nn.BCELoss`。
+    -   **Optimizer**: AdamW (Weight Decay 1e-4)。
+    -   **Epochs**: 設定 500。
+    -   **Early Stopping Logic (關鍵)**：
+        -   Patience = 10。
+        -   **Start Delay (Warmup)**：前 **100 個 Epoch** 不檢查 Early Stopping，強制模型跑滿 100 回合後才開始監控 Loss，避免初期震盪被殺掉。
+
+- **Output Requirements (必備)**：
+    -   針對這 3 個模型，分別繪製 **Training Summary Plot**。
+    -   每張圖需包含 5 個子圖 (Subplots)：**Loss, Accuracy, AUC, Sensitivity, Specificity** (X軸=Epoch, 雙線: Train/Val)。
+    -   最後根據 Validation AUC 自動 print 出 **Best Model Name**。
+
+## 3. Experiment B: Final Evaluation (Advanced Analysis)
+**目標**：使用實驗 A 選出的最佳模型架構，在 **所有 Development Data (80%)** 上重新訓練，並對 **Final Test Set (20%)** 進行深度評估。
+
+- **執行動作**：
+    1.  合併所有 5-fold 的數據 (即原本的 80% Dev Set) 進行 Full Retrain。
+    2.  使用保留的 20% Test Set 進行 Inference。
+
+- **複雜評估與視覺化 (Complex Metrics)**：
+    1.  **基礎指標**：Print 出 Test Set 的 Accuracy, AUC, Sensitivity, Specificity。
+    2.  **Confusion Matrix**：繪製標準混淆矩陣。
+    3.  **ROC Curve**：繪製 ROC 曲線。
+    4.  **Latent Space Visualization (t-SNE)**：
+        -   提取模型 **倒數第二層 (Penultimate Layer)** 的輸出。
+        -   使用 t-SNE 將高維特徵降至 2D，繪製散佈圖 (Scatter Plot)，顏色區分良惡性，觀察特徵分離程度。
+
+# Code Structure Guidelines
+- 請使用 **PyTorch** 與 **torchmetrics**。
+- 代碼需模組化：`class MLP_Dataset`, `class EarlyStopping`, `def train_model`, `def run_experiment_a`, `def run_experiment_b`。
+- 註解清楚，確保 Random Seed 固定 (42)。
